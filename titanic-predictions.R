@@ -1,6 +1,8 @@
 # Load MASS library that contains QDA
 require(MASS)
 require("corrplot")
+require(ROCR)
+
 
 # Load the training and testing data 
 setwd("D:\\_Code\\R\\Titanic-Machine-Learning")
@@ -20,9 +22,8 @@ omitted_col = append(omitted_col, c("Pclass", "FamSize", "Title"))
 corrplot(cor(train.csv[,!names(train.csv) %in% omitted_col]), method="circle")
 
 predictors = names(train.csv)[!names(train.csv) %in% omitted_col]
-
 # Histogram
-par(mfrow=c(2,2))
+par(mfrow=c(3,2))
 for (i in 1:length(predictors)){
   hist(train.csv[,predictors[i]], 
        main = predictors[i],
@@ -41,15 +42,29 @@ test.csv = train.csv[test_rows, ]
 train.csv = train.csv[-test_rows, ]
 
 # Fit Quadratic Discriminant Analysis
-
-predictors
-#qda.fit = qda(formula(paste("Survived ~ ", paste(predictors, collapse=" + "))), data=train.csv)
-qda.fit = qda(Survived ~ Sex + Age + SibSp + Parch + Fare + Embarked + Log_Fare, data=train.csv)
-qda2.fit = qda(Survived ~ Sex + Age + SibSp + Parch + Fare + Embarked, data=train.csv)
+qda.fit = qda(Survived ~ Sex + Age + SibSp + Parch + Fare + Embarked, data=train.csv)
+qda2.fit = qda(Survived ~ Sex + Age + SibSp + Parch + Fare + Embarked + Log_Fare, data=train.csv)
 
 # Cross validation
-qda.class = predict(qda.fit, test.csv)$class
-table(qda.class, test.csv$Survived)
+qda.pred = predict(qda.fit, test.csv)
+table(qda.pred$class, test.csv$Survived)
 
-qda2.class = predict(qda2.fit, test.csv)$class
-table(qda2.class, test.csv$Survived)
+# Adding the log only increases accuracy by a little bit so not worth adding it
+qda2.pred = predict(qda2.fit, test.csv)
+table(qda2.pred$class, test.csv$Survived)
+
+
+# Function to plot the ROC and compute the AUC
+plotROC = function(grouped.pred) {
+  par(mfrow=c(1,1))
+  roc_pred = prediction(grouped.pred, test.csv$Survived)
+  roc_perf = performance(roc_pred, measure = "tpr", x.measure = "fpr")
+  plot(roc_perf, main = "ROC", colorize = T)
+  abline(a = 0, b = 1)
+  auc_perf = performance(roc_pred, measure = "auc")
+  auc = auc_perf@y.values[[1]]
+  cat("AUC: ")
+  cat(auc)
+}
+
+plotROC(qda.pred$posterior[,2])
