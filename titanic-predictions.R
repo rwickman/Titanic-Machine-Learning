@@ -1,8 +1,8 @@
 # Load MASS library that contains QDA
 require(MASS)
-require("corrplot")
+require(corrplot)
 require(ROCR)
-
+require(e1071)
 
 # Load the training and testing data 
 setwd("D:\\_Code\\R\\Titanic-Machine-Learning")
@@ -41,18 +41,55 @@ test_rows = sample(nrow(train.csv), 100)
 test.csv = train.csv[test_rows, ]
 train.csv = train.csv[-test_rows, ]
 
+# Fit Logistic Regression
+logit.fit = glm(Survived ~ Sex + Age + SibSp + Parch + Fare + Embarked, data=train.csv, family=binomial)
+logit.fit.all = glm(Survived ~ .- PassengerId - Survived - Ticket - Name, data=train.csv, family=binomial)
+
 # Fit Quadratic Discriminant Analysis
 qda.fit = qda(Survived ~ Sex + Age + SibSp + Parch + Fare + Embarked, data=train.csv)
 qda2.fit = qda(Survived ~ Sex + Age + SibSp + Parch + Fare + Embarked + Log_Fare, data=train.csv)
 
+# Fit Support Vector Machine (SVM)
+svmfit = svm(Survived ~ Sex + Age + SibSp + Parch + Fare + Embarked + Log_Fare, data=train.csv, kernel ="linear", cost=10, scale=FALSE)
+
+# Find best cost value 
+tune.out = tune(svm, Survived ~ Sex + Age + SibSp + Parch + Fare + Embarked + Log_Fare,
+                data=train.csv,
+                kernel ="linear",
+                ranges=list(cost=c(0.001, 0.01, 0.1, 1,5,10,100)))
+
+summary(tune.out)
+bestmod = tune.out$best.model
+summary(bestmod)
+
+## Logistic Regression
 # Cross validation
+logit.pred = predict(logit.fit, test.csv)
+logit.class = ifelse(logit.pred>0.5, 1, 0)
+table(logit.class, test.csv$Survived)
+# Using all predictors 
+logit.pred.all = predict(logit.fit.all, test.csv)
+logit.class.all = ifelse(logit.pred.all>0.5, 1, 0)
+table(logit.class.all, test.csv$Survived)
+
+
+## QDA
 qda.pred = predict(qda.fit, test.csv)
 table(qda.pred$class, test.csv$Survived)
-
 # Adding the log only increases accuracy by a little bit so not worth adding it
 qda2.pred = predict(qda2.fit, test.csv)
 table(qda2.pred$class, test.csv$Survived)
 
+# SVM Cross Evaluation
+svm.pred = predict(svmfit, test.csv, values=T)
+svm.pred.rounded = round(svm.pred)
+svm.pred.rounded[svm.pred.rounded<0] = 0
+table(svm.pred.rounded, test.csv$Survived)
+
+svm.best.pred = predict(bestmod, test.csv)
+svm.best.pred.rounded = round(svm.best.pred)
+svm.best.pred.rounded[svm.best.pred.rounded<0] = 0
+table(predict=svm.best.pred.rounded, truth=test.csv$Survived)
 
 # Function to plot the ROC and compute the AUC
 plotROC = function(grouped.pred) {
@@ -67,4 +104,9 @@ plotROC = function(grouped.pred) {
   cat(auc)
 }
 
+plotROC(logit.pred)
+plotROC(logit.pred.all)
 plotROC(qda.pred$posterior[,2])
+plotROC(qda2.pred$posterior[,2])
+plotROC(svm.pred)
+plotROC(svm.best.pred)
