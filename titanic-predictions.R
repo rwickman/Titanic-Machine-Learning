@@ -7,16 +7,16 @@ require(e1071)
 # Load the training and testing data
 setwd("D:\\code\\R\\Titanic-Machine-Learning")
 train.csv=read.csv("data\\train_new.csv", header=T)
-test.csv=read.csv("data\\test_new.csv", header=T)
+test.csv.kaggle=read.csv("data\\test_new.csv", header=T)
 
 # Convert the string variable to numeric
 train.csv["Title"] = sapply(train.csv["Title"], as.numeric)
 train.csv["Sex"] = sapply(train.csv["Sex"], as.numeric)
 train.csv["Embarked"] = sapply(train.csv["Embarked"], as.numeric)
 
-test.csv["Title"] = sapply(test.csv["Title"], as.numeric)
-test.csv["Sex"] = sapply(test.csv["Sex"], as.numeric)
-test.csv["Embarked"] = sapply(test.csv["Embarked"], as.numeric)
+test.csv.kaggle["Title"] = sapply(test.csv.kaggle["Title"], as.numeric)
+test.csv.kaggle["Sex"] = sapply(test.csv.kaggle["Sex"], as.numeric)
+test.csv.kaggle["Embarked"] = sapply(test.csv.kaggle["Embarked"], as.numeric)
 
 
 # Find collinearity
@@ -40,28 +40,38 @@ Log_Fare[is.infinite(Log_Fare)] = 0
 hist(Log_Fare)
 train.csv = cbind(train.csv, data.frame(Log_Fare))
 
-Log_Fare = log(test.csv[,"Fare"]) 
+Log_Fare = log(test.csv.kaggle[,"Fare"]) 
 Log_Fare[is.infinite(Log_Fare)] = 0
 hist(Log_Fare)
-test.csv = cbind(test.csv, data.frame(Log_Fare))
+test.csv.kaggle = cbind(test.csv.kaggle, data.frame(Log_Fare))
 
 
 ## Data Visualization
 # PCA
-num_test_rows = nrow(test.csv[,!names(test.csv) %in% omitted_col])
-num_train_rows = nrow(train.csv[,!names(train.csv) %in% omitted_col])
+num_test_rows = nrow(test.csv.kaggle)
+num_train_rows = nrow(train.csv)
 
-all.data = rbind(train.csv[,!names(train.csv) %in% omitted_col], test.csv[,!names(test.csv) %in% omitted_col]) 
-pca = prcomp(all.data[,!names(all.data) %in% omitted_col], center=T, scale=T)
-colors =c("green", "red")
+all.data = rbind(train.csv[,!names(train.csv) %in% omitted_col], test.csv.kaggle[,!names(test.csv.kaggle) %in% omitted_col]) 
+pca = prcomp(all.data[,!names(all.data) %in% omitted_col], scale=T)
+colors = c("green", "red")
+pca$rotation
+
 par(mfrow=c(1,1))
-
+plot(train.csv[,predictors], col=colors[train.csv$Survived+1])
+biplot(pca, scale=0, col=c("orange", "black"))
+pr.var=pca$sdev ^2
+pve = pr.var/sum(pr.var)
+par(mfrow=c(1,2))
+plot(pve, xlab="Principal Component", ylab="Proportion of Variance Explained", ylim=c(0,1), type='b')
+plot(cumsum(pve), xlab="Principal Component", ylab="Cumulative Proportion of Variance Explained ", ylim=c(0,1), type='b')
 plot(pca$x[,1]^2, pca$x[,1],col=colors[train.csv$Survived+1])
-plot(pca$x[num_train_rows,1]^0.5, pca$x[,2],col=colors[train.csv$Survived+1])
+plot(pca$x[,1]^0.5, pca$x[,2],col=colors[train.csv$Survived+1])
+
 train.csv.pca1 = data.frame(x=cbind(pca$x[1:num_train_rows,1]^2, pca$x[1:num_train_rows,1]), Survived=train.csv$Survived)
 train.csv.pca2 = data.frame(x=cbind(pca$x[1:num_train_rows,1]^0.5, pca$x[1:num_train_rows,2]), Survived=train.csv$Survived)
 test.csv.pca2 = data.frame(x=cbind(pca$x[num_train_rows+1:num_test_rows,1]^0.5, pca$x[num_train_rows+1:num_test_rows,2]))
-plot(train.csv[,predictors], col=colors[train.csv$Survived+1])
+train.csv.pca3 = data.frame(x=pca$x[1:num_train_rows,1:6], Survived=train.csv$Survived)
+test.csv.pca3 = pca$x[num_train_rows+1:num_test_rows,1:6]
 
 # Perform train & test split
 test_rows = sample(nrow(train.csv), 100)
@@ -75,6 +85,10 @@ train.csv.pca1 = train.csv.pca1[-test_rows_pca, ]
 test_rows_pca = sample(nrow(train.csv.pca2), 100)
 test.csv.pca2 = train.csv.pca2[test_rows_pca, ]
 train.csv.pca2 = train.csv.pca2[-test_rows_pca, ]
+
+test_rows_pca = sample(nrow(train.csv.pca3), 100)
+test.csv.pca3 = train.csv.pca3[test_rows_pca, ]
+train.csv.pca3 = train.csv.pca3[-test_rows_pca, ]
 
 # Fit Logistic Regression
 logit.fit = glm(Survived ~ Sex + Age + SibSp + Parch + Fare + Embarked, data=train.csv, family=binomial)
@@ -112,6 +126,15 @@ tune.out.pca2 = tune(svm, Survived ~ .,
 summary(tune.out.pca2)
 bestmod.pca2 = tune.out.pca2$best.model
 summary(bestmod.pca2)
+
+tune.out.pca3 = tune(svm, Survived ~ .,
+                     data=train.csv.pca3,
+                     kernel ="radial",
+                     ranges=list(cost=c(0.00001, 0.0001, 0.001, 0.01, 0.1, 1,5,10,100)),
+                     gamma=c(0.5,1,2,3,4))
+summary(tune.out.pca3)
+bestmod.pca3 = tune.out.pca3$best.model
+summary(bestmod.pca3)
 
 
 ## Cross Evaluation
@@ -160,6 +183,11 @@ svm.best.pred.rounded[svm.best.pred.rounded<0] = 0
 table(predict=svm.best.pred.rounded, truth=test.csv.pca2$Survived)
 
 
+svm.best.pred.pca3 = predict(bestmod.pca3, test.csv.pca3)
+svm.best.pred.rounded = round(svm.best.pred.pca3)
+svm.best.pred.rounded[svm.best.pred.rounded<0] = 0
+table(predict=svm.best.pred.rounded, truth=test.csv.pca3$Survived)
+
 # Function to plot the ROC and compute the AUC
 plotROC = function(grouped.pred, test.data) {
   par(mfrow=c(1,1))
@@ -181,10 +209,13 @@ plotROC(svm.pred, test.csv)
 plotROC(svm.best.pred, test.csv)
 plotROC(svm.best.pred.pca1, test.csv.pca1)
 plotROC(svm.best.pred.pca2, test.csv.pca2)
+plotROC(svm.best.pred.pca3, test.csv.pca3)
 
 # Kaggle 
-svm.pred = predict(bestmod.pca2, test.csv.pca2)
+nrow(test.csv)
+svm.pred = predict(svm.best.pred, test.csv[!names(train.csv) %in% omitted_col])
 svm.pred.rounded = round(svm.pred)
 svm.pred.rounded[svm.pred.rounded<0] = 0
 length(svm.pred.rounded)
 length(test.csv$Survived)
+
