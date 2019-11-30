@@ -1,8 +1,13 @@
-# Load MASS library that contains QDA
+rm(list=ls())
+# Load libraries
 require(MASS)
 require(corrplot)
 require(ROCR)
 require(e1071)
+require(neuralnet)
+require(caret)
+require(keras)
+
 
 # Make a prediction given a model and test data
 # It will also plot the confusion matrix
@@ -18,7 +23,7 @@ make_prediction = function(pred.mod, test_data)
 # Function to plot the ROC and compute the AUC
 plotROC = function(grouped.pred, test_data) {
   par(mfrow=c(1,1))
-  roc_pred = prediction(grouped.pred, test_data$Survived)
+  roc_pred = ROCR::prediction(grouped.pred, test_data$Survived)
   roc_perf = performance(roc_pred, measure = "tpr", x.measure = "fpr")
   plot(roc_perf, main = "ROC", colorize = T)
   abline(a = 0, b = 1)
@@ -94,21 +99,26 @@ find_best_num_components = function(train_data, test_data, kernel_type="radial")
 
 # Load the training and testing data
 setwd("D:\\_Code\\R\\Titanic-Machine-Learning")
-train.csv=read.csv("data\\train_new.csv", header=T)
-test.csv.kaggle=read.csv("data\\test_new.csv", header=T)
+train.csv=read.csv("data\\train.csv", header=T)
+test.csv.kaggle=read.csv("data\\test.csv", header=T)
 
-# Convert the string variable to numeric
-train.csv$Title = sapply(train.csv$Title, as.numeric)
-train.csv$Sex = sapply(train.csv$Sex, as.numeric)
+
+# Data preprocessing
+#train.csv$Title = sapply(train.csv$Title, as.numeric)
+train.csv$Sex = ifelse(train.csv$Sex == "male", 1, 0)
 train.csv$Embarked = sapply(train.csv$Embarked, as.numeric)
+train.csv$Age[is.na(train.csv$Age)] = median(c(train.csv$Age, test.csv.kaggle$Age), na.rm=TRUE)
 
-test.csv.kaggle$Title = sapply(test.csv.kaggle$Title, as.numeric)
+
+#test.csv.kaggle$Title = sapply(test.csv.kaggle$Title, as.numeric)
 test.csv.kaggle$Sex = sapply(test.csv.kaggle$Sex, as.numeric)
 test.csv.kaggle$Embarked = sapply(test.csv.kaggle$Embarked, as.numeric)
-
+test.csv.kaggle$Age[is.na(test.csv.kaggle$Age)] = median(c(train.csv$Age, test.csv.kaggle$Age), na.rm=TRUE)
+test.csv.kaggle$Fare[is.na(test.csv.kaggle$Fare)] = median(c(train.csv$Fare, test.csv.kaggle$Fare), na.rm=TRUE)
+test.csv.kaggle.passenger_id = test.csv.kaggle$PassengerId
 
 # Find collinearity
-omitted_col = c("PassengerId", "Ticket", "Name")
+omitted_col = c("PassengerId", "Ticket", "Name", "Cabin")
 corrplot(cor(train.csv[,!names(train.csv) %in% omitted_col]), method="circle")
 omitted_col = append(omitted_col, c("FamSize", "Title"))
 plot(train.csv[,!names(train.csv) %in% omitted_col], col=colors[train.csv$Survived+1])
@@ -117,6 +127,16 @@ corrplot(cor(train.csv[,!names(train.csv) %in% omitted_col]), method="circle")
 omitted_col = append(omitted_col, c("Survived"))
 predictors = names(train.csv)[!names(train.csv) %in% omitted_col]
 plot(train.csv[,predictors], col=colors[train.csv$Survived+1])
+
+
+
+
+train_trans = preProcess(train.csv[,predictors], method="range")
+train.csv[,predictors] = predict(train_trans, train.csv[,predictors])
+
+#test_tran = preProcess(test.csv.kaggle, method="range")
+#test.csv.kaggle = predict(test_tran, test.csv.kaggle)
+test.csv.kaggle[,predictors] = predict(train_trans, test.csv.kaggle[,predictors])
 
 # Histogram
 par(mfrow=c(3,2))
@@ -141,7 +161,7 @@ for (i in 1:length(predictors)){
 num_test_rows = nrow(test.csv.kaggle)
 num_train_rows = nrow(train.csv)
 
-all.data = rbind(train.csv[,!names(train.csv) %in% omitted_col], test.csv.kaggle[,!names(test.csv.kaggle) %in% omitted_col]) 
+all.data = rbind(train.csv[,predictors], test.csv.kaggle[,predictors]) 
 pca = prcomp(all.data, scale=T)
 colors = c("green", "red")
 
@@ -166,7 +186,7 @@ train.csv.pca3 = data.frame(x=pca$x[1:num_train_rows,], Survived=train.csv$Survi
 test.csv.pca3.kaggle = data.frame(x=pca$x[num_train_rows+1:num_test_rows,])
 
 # Perform train & test split
-percentage_test = 0.2
+percentage_test = 0.1
 num_test_samples = nrow(train.csv) * percentage_test
 
 test_rows = sample(nrow(train.csv), num_test_samples)
@@ -184,10 +204,12 @@ train.csv.pca3 = train.csv.pca3[-test_rows, ]
 
 
 ## Fit Support Vector Machine (SVM)
-svmfit = svm(Survived ~ Sex + Age + SibSp + Parch + Fare + Embarked + Title, data=train.csv, kernel ="linear", cost=0.01, scale=FALSE)
-summary(svmfit)
+svmfit = svm(Survived ~ Sex + Age + SibSp + Parch + Fare + Embarked + Pclass, data=train.csv, kernel ="linear", cost=0.01, scale=FALSE)
 
-svmfit2 = svm(Survived ~ Sex + Age + SibSp + Parch + Fare + Embarked + Title, data=train.csv, kernel ="polynomial", d=2, cost=0.01, gamma=1)
+#svmfit = svm(Survived ~ Sex + Age + SibSp + Parch + Fare + Embarked + Pclass, data=train.csv[,!names(train.csv) %in% omitted_col], kernel ="linear", cost=0.01, scale=FALSE)
+#summary(svmfit)
+
+svmfit2 = svm(Survived ~ Sex + Age + SibSp + Parch + Fare + Embarked, data=train.csv, kernel ="radial", cost=0.01, gamma=1)
 summary(svmfit)
 
 # Find best regular SVM
@@ -198,18 +220,71 @@ summary(bestmod2)
 bestmod3 = find_best_svm(train.csv[, c("Sex", "Age", "SibSp", "Parch", "Fare", "Embarked", "Pclass", "Survived")], "polynomial")
 summary(bestmod3)
 
-
-# Find best PCA model using potentially all the components
+#Find best PCA model using potentially all the components
 num_comp = find_best_num_components(train.csv.pca3, test.csv.pca3)
 bestmod_pca = find_best_svm(train.csv.pca3[,c(1:num_comp, 8)])
 
 # Find best using transformed first component
 bestmod_pca1 = find_best_svm(train.csv.pca1, "linear")
 
-
 # Find best using transformed first two components
 bestmod_pca2 = find_best_svm(train.csv.pca2, "radial")
-train.csv.pca2$x.1
+
+
+# Fit Neural Network
+nn_fit = neuralnet(Survived ~ Sex + Age + SibSp + Parch + Fare + Embarked + Pclass, data=train.csv, hidden=3, linear.output = FALSE)
+#plot(nn_fit)
+nn_fit2 = neuralnet(Survived ~ Sex + Age + SibSp + Parch + Fare + Embarked + Pclass, data=train.csv, hidden=5, linear.output = FALSE, stepmax=1e+06)
+plot(nn_fit2, rep="best")
+
+nn_fit3 = neuralnet(train.csv$Survived ~ ., data=train.csv[,!names(train.csv) %in% omitted_col], hidden=5, linear.output = FALSE)
+plot(nn_fit3)
+
+# Fit Neural Network with PCA
+nn_fit_pca= neuralnet(Survived ~ ., data=train.csv.pca3[,c(1:6, 8)], hidden=5, linear.output = FALSE)
+plot(nn_fit_pca)
+# 5, 3: 0.8012179, 0.7842949
+#3:  0.7801923, 0.7809615
+#4: 0.8157051, 0.8060897
+#5: 0.7787821, 0.7925
+#6: 0.7923718, 0.8046795
+#7: 0.7813462
+
+# Fit Neural Network with Regularization
+dropout_model <- 
+  keras_model_sequential() %>%
+  layer_dense(units = 12, activation = "relu", input_shape = ncol(train.csv[,predictors])) %>%
+  layer_dropout(0.4) %>%
+  layer_dense(units = 12, activation = "relu") %>%
+  layer_dropout(0.6) %>%
+  layer_dense(units = 1, activation = "sigmoid")
+
+dropout_model %>% compile(
+  optimizer = "adam",
+  loss = "binary_crossentropy",
+  metrics = list("accuracy")
+)
+
+dropout_history <- dropout_model %>% fit(
+  data.matrix(train.csv[,predictors]),
+  data.matrix(train.csv$Survived),
+  epochs = 200,
+  batch_size = 50,
+  #validation_data = list(data.matrix(test.csv[,predictors]), data.matrix(test.csv$Survived)),
+  validation_split = 0.1,
+  verbose = 2
+)
+
+par(mfrow=c(1,1))
+summary(dropout_model)
+plot(dropout_history$metrics$loss, main="Model Loss", xlab = "epoch", ylab="loss", col="orange", type="l")
+lines(dropout_history$metrics$val_loss, col="skyblue")
+legend("topright", c("Training","Testing"), col=c("orange", "skyblue"), lty=c(1,1))
+x = evaluate(dropout_model, data.matrix(test.csv[,predictors]), data.matrix(test.csv$Survived))
+predict(dropout_model, data.matrix(test.csv[,predictors]))
+
+
+
 
 
 ## Cross Evaluation
@@ -223,6 +298,18 @@ svm.bestmod_pca.pred = make_prediction(bestmod_pca, test.csv.pca3)
 svm.bestmod_pca1.pred = make_prediction(bestmod_pca1, test.csv.pca1)
 svm.bestmod_pca2.pred = make_prediction(bestmod_pca2, test.csv.pca2)
 
+
+
+nn_fit.pred = make_prediction(nn_fit, test.csv)
+nn_fit2.pred = make_prediction(nn_fit2, test.csv)
+nn_fit3.pred = make_prediction(nn_fit3, test.csv)
+
+nn_fit_pca.pred = make_prediction(nn_fit_pca, test.csv.pca3)
+
+dropout_model.pred = predict(dropout_model, data.matrix(test.csv[,predictors]))
+predicted.class = ifelse(dropout_model.pred>0.5, 1, 0)
+table(predict=predicted.class, truth=test.csv$Survived)
+
 ## ROC PREDICTIONS
 plotROC(svm.pred, test.csv)
 plotROC(svm2.pred, test.csv)
@@ -231,10 +318,14 @@ plotROC(svm.bestmod2.pred, test.csv)
 plotROC(svm.bestmod_pca.pred, test.csv.pca3)
 plotROC(svm.bestmod_pca1.pred, test.csv.pca1)
 plotROC(svm.bestmod_pca2.pred, test.csv.pca2)
-
+plotROC(dropout_model.pred, test.csv)
+plotROC(nn_fit.pred, test.csv)
+plotROC(nn_fit2.pred, test.csv)
+plotROC(nn_fit3.pred, test.csv)
+plotROC(nn_fit_pca.pred, test.csv.pca3)
 ## Kaggle Submission
 # Regular SVM
-#svm.pred = predict(bestmod, test.csv.kaggle[,!names(train.csv) %in% omitted_col])
+#svm.pred = predict(svmfit, test.csv.kaggle[,-2])
 #svm.pred.rounded = round(svm.pred)
 #svm.pred.rounded[svm.pred.rounded<0] = 0
 #submission = data.frame(PassengerId=test.csv.kaggle$PassengerId,Survived=svm.pred.rounded)
@@ -247,3 +338,23 @@ plotROC(svm.bestmod_pca2.pred, test.csv.pca2)
 #submission = data.frame(PassengerId=test.csv.kaggle$PassengerId,Survived=svm.pred.rounded)
 #write.csv(submission, "svm_pca_submission.csv", row.names=FALSE)
 
+# NN
+nn.pred = compute(nn_fit2, train.csv)
+predicted.class = ifelse(nn.pred$net.result>0.5, 1, 0)
+table(predict=predicted.class, truth=train.csv$Survived)
+
+nn.pred = compute(nn_fit2, test.csv.kaggle)
+predicted.class = ifelse(nn.pred$net.result>0.5, 1, 0)
+submission = data.frame(PassengerId=test.csv.kaggle.passenger_id,Survived=predicted.class)
+write.csv(submission, "nn_submission.csv", row.names=FALSE)
+
+# Dropout NN
+nn.pred = predict(dropout_model, data.matrix(train.csv[,predictors]))
+
+predicted.class = ifelse(nn.pred>0.5, 1, 0)
+table(predict=predicted.class, truth=train.csv$Survived)
+
+nn.pred = compute(dropuot_model, test.csv.kaggle)
+predicted.class = ifelse(nn.pred$net.result>0.5, 1, 0)
+submission = data.frame(PassengerId=test.csv.kaggle.passenger_id,Survived=predicted.class)
+write.csv(submission, "nn_submission.csv", row.names=FALSE)
