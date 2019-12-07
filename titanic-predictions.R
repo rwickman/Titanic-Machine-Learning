@@ -1,12 +1,12 @@
 rm(list=ls())
 # Load libraries
+require(caret)
+require(keras)
+require(neuralnet)
 require(MASS)
 require(corrplot)
 require(ROCR)
 require(e1071)
-require(neuralnet)
-require(caret)
-require(keras)
 
 
 # Make a prediction given a model and test data
@@ -76,6 +76,7 @@ find_best_num_components = function(train_data, test_data, kernel_type="radial")
   max_auc = 0
   bestmod_overall = NULL
   best_num_components = 0
+  aucs = c(1:max_components)
   for (i in 1:max_components)
   {
     print("")
@@ -83,6 +84,7 @@ find_best_num_components = function(train_data, test_data, kernel_type="radial")
     bestmod = find_best_svm(train_data[,c(1:i, ncol(train_data))])
     bestmod_pred = make_prediction(bestmod, test_data)
     auc = plotROC(bestmod_pred, test_data)
+    aucs[i] = auc
     if (auc > max_auc)
     {
       max_auc = auc
@@ -90,13 +92,14 @@ find_best_num_components = function(train_data, test_data, kernel_type="radial")
       best_num_components = i
     }
   }
+  plot(x=c(1:max_components), y=aucs, type="o", xlab="Number of Components", ylab="AUC", pch=19)
   print("")
   print(paste("\nBest Number of Components:", best_num_components))
   print(paste("Max AUC:", max_auc))
   best_num_components
 }
 
-find_best_num_epochs = function(train_data, test_data, predictors, epochs, units=256)
+find_best_num_epochs = function(train_data, test_data, predictors, epochs, units=256, dropout=T)
 {
   aucs = matrix(1:(3*length(epochs)), nrow=length(epochs), dimnames = list(epochs))
   print(aucs)
@@ -105,13 +108,26 @@ find_best_num_epochs = function(train_data, test_data, predictors, epochs, units
   {
     for (j in 1:3)
     {
-      dropout_model <- 
-        keras_model_sequential() %>%
-        layer_dense(units = units, activation = "relu", input_shape = ncol(train.csv[,predictors])) %>%
-        layer_dropout(0.4) %>%
-        layer_dense(units = units, activation = "relu") %>%
-        layer_dropout(0.6) %>%
-        layer_dense(units = 1, activation = "sigmoid")
+      if (dropout)
+      {
+        dropout_model <- 
+          keras_model_sequential() %>%
+          layer_dense(units = units, activation = "relu", input_shape = ncol(train_data[,predictors]), kernel_constraint=constraint_maxnorm(3)) %>%
+          layer_dropout(0.2) %>%
+          layer_dense(units = units, activation = "relu", kernel_constraint=constraint_maxnorm(3)) %>%
+          layer_dropout(0.1) %>%
+          layer_dense(units = 1, activation = "sigmoid")  
+      }
+      else{
+        dropout_model <- 
+          keras_model_sequential() %>%
+          layer_dense(units = units, activation = "relu", input_shape = ncol(train.csv[,predictors]),  kernel_regularizer = regularizer_l2(l = 0.001)) %>%
+          #layer_dropout(0.0) %>%
+          layer_dense(units = units, activation = "relu",  kernel_regularizer = regularizer_l2(l = 0.001)) %>%
+          #layer_dropout(0.9) %>%
+          layer_dense(units = 1, activation = "sigmoid")
+      }
+      
       
       dropout_model %>% compile(
         optimizer = "adam",
@@ -123,14 +139,14 @@ find_best_num_epochs = function(train_data, test_data, predictors, epochs, units
         data.matrix(train_data[,predictors]),
         data.matrix(train_data$Survived),
         epochs = epoch,
-        batch_size = 50,
+        batch_size = 32,
         #validation_data = list(data.matrix(test.csv[,predictors]), data.matrix(test.csv$Survived)),
         validation_split = 0.2,
         verbose = 2
       )
       dropout_model.pred = predict(dropout_model, data.matrix(test_data[,predictors]))
       predicted.class = ifelse(dropout_model.pred>0.5, 1, 0)
-      table(predict=predicted.class, truth=test_data$Survived)
+      print(table(predict=predicted.class, truth=test_data$Survived))
       
       aucs[i,j] = plotROC(dropout_model.pred, test_data)
     }
@@ -147,12 +163,13 @@ test.csv.kaggle=read.csv("data\\test.csv", header=T)
 
 
 # Data preprocessing
+#train.csv$Survived = sapply(train.csv$Survived, as.factor)
 train.csv$Title = sapply(train.csv$Title, as.numeric)
 train.csv$Sex = ifelse(train.csv$Sex == "male", 1, 0)
 train.csv$Embarked = sapply(train.csv$Embarked, as.numeric)
 train.csv$Age[is.na(train.csv$Age)] = median(c(train.csv$Age, test.csv.kaggle$Age), na.rm=TRUE)
 
-
+#test.csv.kaggle$Survived = sapply(test.csv.kaggle$Survived, as.factor)
 test.csv.kaggle$Title = sapply(test.csv.kaggle$Title, as.numeric)
 test.csv.kaggle$Sex = ifelse(test.csv.kaggle$Sex == "male", 1, 0)
 test.csv.kaggle$Embarked = sapply(test.csv.kaggle$Embarked, as.numeric)
@@ -160,35 +177,82 @@ test.csv.kaggle$Age[is.na(test.csv.kaggle$Age)] = median(c(train.csv$Age, test.c
 test.csv.kaggle$Fare[is.na(test.csv.kaggle$Fare)] = median(c(train.csv$Fare, test.csv.kaggle$Fare), na.rm=TRUE)
 test.csv.kaggle.passenger_id = test.csv.kaggle$PassengerId
 
-# Log transformation for Fare
 
-train.csv[,"Pclass"] * train.csv[, "FamSize"]
-#Log_Fare = log(train.csv[,"Fare"]) 
-#Log_Fare[is.infinite(Log_Fare)] = 0
-#hist(Log_Fare)
-#train.csv = cbind(train.csv, data.frame(Log_Fare))
+Pclass.FamSize = train.csv[,"Pclass"] * train.csv[, "FamSize"]
+train.csv = cbind(train.csv, Pclass.FamSize)
+Pclass.FamSize = test.csv.kaggle[, "Pclass"] * test.csv.kaggle[, "FamSize"]
+test.csv.kaggle = cbind(test.csv.kaggle, Pclass.FamSize)
 
-#Log_Fare = log(test.csv.kaggle[,"Fare"]) 
-#Log_Fare[is.infinite(Log_Fare)] = 0
-#hist(Log_Fare)
-#test.csv.kaggle = cbind(test.csv.kaggle, data.frame(Log_Fare))
+Title.Pclass = train.csv[,"Title"] * train.csv[, "Pclass"]
+train.csv = cbind(train.csv, Title.Pclass)
+Title.Pclass = test.csv.kaggle[, "Title"] * test.csv.kaggle[, "Pclass"]
+test.csv.kaggle = cbind(test.csv.kaggle, Title.Pclass)
+ 
+Title.FamSize = train.csv[,"Title"] * train.csv[, "FamSize"]
+train.csv = cbind(train.csv, Title.FamSize)
+Title.FamSize = test.csv.kaggle[, "Title"] * test.csv.kaggle[, "FamSize"]
+test.csv.kaggle = cbind(test.csv.kaggle, Title.FamSize)
+
+# Sex.Embarked = train.csv[,"Sex"] * train.csv[, "Embarked"]
+# train.csv = cbind(train.csv, Sex.Embarked)
+# Sex.Embarked = test.csv.kaggle[, "Title"] * test.csv.kaggle[, "Embarked"]
+# test.csv.kaggle = cbind(test.csv.kaggle, Sex.Embarked)
+# 
+FamSize.Embarked = train.csv[,"FamSize"] * train.csv[, "Embarked"]
+train.csv = cbind(train.csv, FamSize.Embarked)
+FamSize.Embarked = test.csv.kaggle[, "FamSize"] * test.csv.kaggle[, "Embarked"]
+test.csv.kaggle = cbind(test.csv.kaggle, FamSize.Embarked)
+
+
+Age.Pclass = train.csv[,"Age"] * train.csv[, "Pclass"]
+train.csv = cbind(train.csv, Age.Pclass)
+Age.Pclass = test.csv.kaggle[, "Age"] * test.csv.kaggle[, "Pclass"]
+test.csv.kaggle = cbind(test.csv.kaggle, Age.Pclass)
+
+
+Log_Fare = log(train.csv[,"Fare"])
+Log_Fare[is.infinite(Log_Fare)] = 0
+hist(Log_Fare)
+train.csv = cbind(train.csv, data.frame(Log_Fare))
+
+Log_Fare = log(test.csv.kaggle[,"Fare"])
+Log_Fare[is.infinite(Log_Fare)] = 0
+hist(Log_Fare)
+test.csv.kaggle = cbind(test.csv.kaggle, data.frame(Log_Fare))
 
 
 # Find collinearity
 omitted_col = c("PassengerId", "Ticket", "Name", "Cabin")
 corrplot(cor(train.csv[,!names(train.csv) %in% omitted_col]), method="circle")
-omitted_col = append(omitted_col, c("FamSize", "Title"))
+omitted_col = append(omitted_col, c("FamSize", "Pclass.FamSize", "SibSp", "Fare","Title"))
 plot(train.csv[,!names(train.csv) %in% omitted_col], col=colors[train.csv$Survived+1])
 
-corrplot(cor(train.csv[,!names(train.csv) %in% omitted_col]), method="circle")
+#corrplot(cor(train.csv[,!names(train.csv) %in% omitted_col]), method="circle")
 omitted_col = append(omitted_col, c("Survived"))
 predictors = names(train.csv)[!names(train.csv) %in% omitted_col]
-plot(train.csv[,predictors], col=colors[train.csv$Survived+1])
+#plot(train.csv[,predictors], col=colors[train.csv$Survived+1])
+predictors = c("Title", "Pclass", "FamSize", "Age", "Sex", "Embarked", "Title.Pclass", "Title.FamSize", "FamSize.Embarked", "Age.Pclass")
+highlyCorrelated = findCorrelation(cor(train.csv[,predictors]), cutoff=0.75)
+predictors[highlyCorrelated]
+predictors = predictors[-highlyCorrelated]
 
 
-train_trans = preProcess(train.csv[,predictors], method="range")
+train_trans = preProcess(train.csv[,predictors], method="scale")
 train.csv[,predictors] = predict(train_trans, train.csv[,predictors])
-test.csv.kaggle[,predictors] = predict(train_trans, test.csv.kaggle[,predictors])
+
+test_trans = preProcess(test.csv.kaggle[,predictors], method="scale")
+test.csv.kaggle[,predictors] = predict(test_trans, test.csv.kaggle[,predictors])
+
+control = rfeControl(functions=caretFuncs, method="cv", number=10)
+
+results = rfe(train.csv[,predictors], train.csv$Survived, sizes=c(3:length(predictors)), rfeControl=control, method="svmRadial")
+results
+predictors(results)
+plot(results, type=c("g", "o"))
+
+predictors = predictors(results)
+
+
 
 # Histogram
 par(mfrow=c(3,2))
@@ -197,17 +261,6 @@ for (i in 1:length(predictors)){
        main = predictors[i],
        xlab="")
 }
-
-# Log transformation for Fare
-#Log_Fare = log(train.csv[,"Fare"]) 
-#Log_Fare[is.infinite(Log_Fare)] = 0
-#hist(Log_Fare)
-#train.csv = cbind(train.csv, data.frame(Log_Fare))
-
-#Log_Fare = log(test.csv.kaggle[,"Fare"]) 
-#Log_Fare[is.infinite(Log_Fare)] = 0
-#hist(Log_Fare)
-#test.csv.kaggle = cbind(test.csv.kaggle, data.frame(Log_Fare))
 
 ## PCA
 num_test_rows = nrow(test.csv.kaggle)
@@ -253,27 +306,39 @@ train.csv.pca2 = train.csv.pca2[-test_rows, ]
 
 test.csv.pca3 = train.csv.pca3[test_rows, ]
 train.csv.pca3 = train.csv.pca3[-test_rows, ]
-
+predictors
 
 ## Fit Support Vector Machine (SVM)
-svmfit = svm(Survived ~ Sex + Age + SibSp + Parch + Fare + Embarked + Pclass, data=train.csv, kernel ="linear", cost=0.01, scale=FALSE)
+#svmfit = svm(Survived ~ Sex + Age + SibSp + Parch + Fare + Embarked + Pclass, data=train.csv, kernel ="linear", cost=0.01, scale=FALSE)
 
-svmfit2 = svm(Survived ~ Sex + Age + SibSp + Parch + Fare + Embarked, data=train.csv, kernel ="radial", cost=0.01, gamma=1)
-summary(svmfit)
+#svmfit2 = svm(Survived ~ Sex + Age + SibSp + Parch + Fare + Embarked, data=train.csv, kernel ="radial", cost=0.01, gamma=1)
+#summary(svmfit)
 
 # Find best regular SVM
-bestmod = find_best_svm(train.csv[, c("Sex", "Age", "SibSp", "Parch", "Fare", "Embarked", "Pclass", "Survived")], "linear")
-summary(bestmod)
-bestmod2 = find_best_svm(train.csv[, c("Sex", "Age", "SibSp", "Parch", "Fare", "Embarked", "Pclass", "Survived")], "radial")
+#bestmod = find_best_svm(train.csv[, c("Sex", "Age", "SibSp", "Parch", "Fare", "Embarked", "Survived")], "linear")
+#summary(bestmod)
+#bestmod2 = find_best_svm(train.csv[, c("Sex", "Age", "SibSp", "Parch", "Fare", "Embarked", "Pclass", "Survived")], "radial")
+#summary(bestmod2)
+
+
+temp = append(predictors, "Survived")
+bestmod = find_best_svm(train.csv[,temp], "linear")
+svm.bestmod.pred = make_prediction(bestmod, test.csv)
+plotROC(svm.bestmod.pred, test.csv)
+
+
+bestmod2 = find_best_svm(train.csv[,temp])
+svm.bestmod.pred = make_prediction(bestmod2, test.csv)
+plotROC(svm.bestmod.pred, test.csv)
+
+
 summary(bestmod2)
-bestmod3 = find_best_svm(train.csv[, c("Sex", "Age", "SibSp", "Parch", "Fare", "Embarked", "Pclass", "Survived")], "polynomial")
-summary(bestmod3)
 
 #Find best PCA model using potentially all the components
 num_comp = find_best_num_components(train.csv.pca3, test.csv.pca3)
 bestmod_pca = find_best_svm(train.csv.pca3[,c(1:num_comp, ncol(train.csv.pca3))])
 
-# Find best using transformed first component
+#Find best using transformed first component
 bestmod_pca1 = find_best_svm(train.csv.pca1, "linear")
 
 # Find best using transformed first two components
@@ -299,20 +364,25 @@ plot(nn_fit_pca)
 #7: 0.7813462
 
 # Fit Neural Network with Regularization
-epochs = c(10, 50, 100, 150, 200, 250, 300)
+#epochs = c(50, 100, 150, 200, 250, 300)
+#epochs = c(50, 100, 150, 200)
+epochs = c(50, 100, 150, 200, 300)
 units = 128
-#aucs = find_best_num_epochs(train.csv.pca3, test.csv.pca3, predictors, epochs, units)
-aucs = find_best_num_epochs(train.csv.pca3, test.csv.pca3, c(1:ncol(train.csv.pca3)-1), epochs, units)
-
+aucs = find_best_num_epochs(train.csv, test.csv, predictors, epochs, units)
+aucs_pca = find_best_num_epochs(train.csv.pca3, test.csv.pca3, c(1:(ncol(train.csv.pca3)-5)), epochs, units)
 plot(x=epochs, y=rowMeans(aucs), type="o", pch=19)
 print(aucs)
 
+print("PCA")
+plot(x=epochs, y=rowMeans(aucs_pca), type="o", pch=19)
+print(aucs_pca)
+
 dropout_model <- 
   keras_model_sequential() %>%
-  layer_dense(units = 128, activation = "relu", input_shape = ncol(train.csv[,predictors])) %>%
-  layer_dropout(0.4) %>%
-  layer_dense(units = 128, activation = "relu") %>%
+  layer_dense(units = 128, activation = "relu", input_shape = ncol(train.csv[,predictors]), kernel_constraint=constraint_maxnorm(3)) %>%
   layer_dropout(0.6) %>%
+  layer_dense(units = 128, activation = "relu", kernel_constraint=constraint_maxnorm(3)) %>%
+  layer_dropout(0.4) %>%
   layer_dense(units = 1, activation = "sigmoid")
 
 dropout_model %>% compile(
@@ -325,7 +395,7 @@ dropout_history <- dropout_model %>% fit(
   data.matrix(train.csv[,predictors]),
   data.matrix(train.csv$Survived),
   epochs = 150,
-  batch_size = 50,
+  batch_size = 32,
   #validation_data = list(data.matrix(test.csv[,predictors]), data.matrix(test.csv$Survived)),
   validation_split = 0,
   verbose = 2
@@ -344,6 +414,8 @@ predict(dropout_model, data.matrix(test.csv[,predictors]))
 ## Cross Evaluation
 svm.pred = make_prediction(svmfit, test.csv)
 svm2.pred = make_prediction(svmfit2, test.csv)
+names(train.csv) %in% names(test.csv)
+
 svm.bestmod.pred = make_prediction(bestmod, test.csv)
 svm.bestmod2.pred = make_prediction(bestmod2, test.csv)
 svm.bestmod3.pred = make_prediction(bestmod3, test.csv)
@@ -376,14 +448,18 @@ plotROC(svm.bestmod_pca2.pred, test.csv.pca2)
 plotROC(nn_fit.pred, test.csv)
 plotROC(nn_fit2.pred, test.csv)
 plotROC(nn_fit3.pred, test.csv)
+
 plotROC(dropout_model.pred, test.csv)
+
 plotROC(nn_fit_pca.pred, test.csv.pca3)
 
 ## Kaggle Submission
 # Regular SVM
-svm.pred = predict(svmfit, test.csv.kaggle)
+svm.pred = predict(bestmod2, test.csv.kaggle)
 svm.pred.rounded = round(svm.pred)
 svm.pred.rounded[svm.pred.rounded<0] = 0
+predictors
+
 submission = data.frame(PassengerId=test.csv.kaggle$PassengerId,Survived=svm.pred.rounded)
 write.csv(submission, "svm_submission.csv", row.names=FALSE)
 
@@ -402,16 +478,30 @@ table(predict=predicted.class, truth=train.csv$Survived)
 nn.pred = compute(nn_fit2, test.csv.kaggle)
 predicted.class = ifelse(nn.pred$net.result>0.5, 1, 0)
 submission = data.frame(PassengerId=test.csv.kaggle.passenger_id,Survived=predicted.class)
-write.csv(submission, "nn_submission.csv", row.names=FALSE)
+write.csv(submission, "nn_prev_submission.csv", row.names=FALSE)
 
 # Dropout NN
 nn.pred = predict(dropout_model, data.matrix(train.csv[,predictors]))
-
 predicted.class = ifelse(nn.pred>0.5, 1, 0)
 table(predict=predicted.class, truth=train.csv$Survived)
-plotROC(dropout_model, train_data)
 
+#plotROC(dropout_model, train_data)
 
+#        truth
+# predict   0   1
+#       0 499  93
+#       1  50 249
+#        truth
+# predict   0   1
+#       0 502  95
+#       1  47 247
+# predict   0   1
+#       0 506  96
+#       1  43 246
+#        truth
+# predict   0   1
+#       0 502  93
+#       1  47 249
 nn.pred = predict(dropout_model, data.matrix(test.csv.kaggle[,predictors]))
 predicted.class = ifelse(nn.pred>0.5, 1, 0)
 submission = data.frame(PassengerId=test.csv.kaggle.passenger_id,Survived=predicted.class)
