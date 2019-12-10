@@ -219,42 +219,42 @@ test.csv.kaggle$Age =  all_data[nrow(train.csv)+1:nrow(test.csv.kaggle), ]$Age
 
 
 # 
-Alone = ifelse(train.csv$FamSize == 1, 1, 0)
-train.csv = cbind(train.csv, Alone)
-Alone = ifelse(test.csv.kaggle$FamSize == 1, 1, 0)
-test.csv.kaggle = cbind(test.csv.kaggle, Alone)
+# Alone = ifelse(train.csv$FamSize == 1, 1, 0)
+# train.csv = cbind(train.csv, Alone)
+# Alone = ifelse(test.csv.kaggle$FamSize == 1, 1, 0)
+# test.csv.kaggle = cbind(test.csv.kaggle, Alone)
 # 
-Pclass.FamSize = train.csv[,"Pclass"] * train.csv[, "FamSize"]
-train.csv = cbind(train.csv, Pclass.FamSize)
-Pclass.FamSize = test.csv.kaggle[, "Pclass"] * test.csv.kaggle[, "FamSize"]
-test.csv.kaggle = cbind(test.csv.kaggle, Pclass.FamSize)
-#
-Title.Pclass = train.csv[,"Title"] * train.csv[, "Pclass"]
-train.csv = cbind(train.csv, Title.Pclass)
-Title.Pclass = test.csv.kaggle[, "Title"] * test.csv.kaggle[, "Pclass"]
-test.csv.kaggle = cbind(test.csv.kaggle, Title.Pclass)
-
-Title.FamSize = train.csv[,"Title"] * train.csv[, "FamSize"]
-train.csv = cbind(train.csv, Title.FamSize)
-Title.FamSize = test.csv.kaggle[, "Title"] * test.csv.kaggle[, "FamSize"]
-test.csv.kaggle = cbind(test.csv.kaggle, Title.FamSize)
-
-FamSize.Embarked = train.csv[,"FamSize"] * train.csv[, "Embarked"]
-train.csv = cbind(train.csv, FamSize.Embarked)
-FamSize.Embarked = test.csv.kaggle[, "FamSize"] * test.csv.kaggle[, "Embarked"]
-test.csv.kaggle = cbind(test.csv.kaggle, FamSize.Embarked)
-
-Age.Pclass = train.csv[,"Age"] * train.csv[, "Pclass"]
-train.csv = cbind(train.csv, Age.Pclass)
-Age.Pclass = test.csv.kaggle[, "Age"] * test.csv.kaggle[, "Pclass"]
-test.csv.kaggle = cbind(test.csv.kaggle, Age.Pclass)
+# Pclass.FamSize = train.csv[,"Pclass"] * train.csv[, "FamSize"]
+# train.csv = cbind(train.csv, Pclass.FamSize)
+# Pclass.FamSize = test.csv.kaggle[, "Pclass"] * test.csv.kaggle[, "FamSize"]
+# test.csv.kaggle = cbind(test.csv.kaggle, Pclass.FamSize)
+# #
+# Title.Pclass = train.csv[,"Title"] * train.csv[, "Pclass"]
+# train.csv = cbind(train.csv, Title.Pclass)
+# Title.Pclass = test.csv.kaggle[, "Title"] * test.csv.kaggle[, "Pclass"]
+# test.csv.kaggle = cbind(test.csv.kaggle, Title.Pclass)
+# 
+# Title.FamSize = train.csv[,"Title"] * train.csv[, "FamSize"]
+# train.csv = cbind(train.csv, Title.FamSize)
+# Title.FamSize = test.csv.kaggle[, "Title"] * test.csv.kaggle[, "FamSize"]
+# test.csv.kaggle = cbind(test.csv.kaggle, Title.FamSize)
+# 
+# FamSize.Embarked = train.csv[,"FamSize"] * train.csv[, "Embarked"]
+# train.csv = cbind(train.csv, FamSize.Embarked)
+# FamSize.Embarked = test.csv.kaggle[, "FamSize"] * test.csv.kaggle[, "Embarked"]
+# test.csv.kaggle = cbind(test.csv.kaggle, FamSize.Embarked)
+# 
+# Age.Pclass = train.csv[,"Age"] * train.csv[, "Pclass"]
+# train.csv = cbind(train.csv, Age.Pclass)
+# Age.Pclass = test.csv.kaggle[, "Age"] * test.csv.kaggle[, "Pclass"]
+# test.csv.kaggle = cbind(test.csv.kaggle, Age.Pclass)
 
 
 # Log_Fare = log(train.csv[,"Fare"])
 # Log_Fare[is.infinite(Log_Fare)] = 0
 # hist(Log_Fare)
 # train.csv = cbind(train.csv, data.frame(Log_Fare))
-
+# 
 # Log_Fare = log(test.csv.kaggle[,"Fare"])
 # Log_Fare[is.infinite(Log_Fare)] = 0
 # hist(Log_Fare)
@@ -266,14 +266,14 @@ omitted_col = c("PassengerId", "Ticket", "Name", "Cabin")
 corrplot(cor(train.csv[,!names(train.csv) %in% omitted_col]), method="circle")
 #omitted_col = append(omitted_col, c("FamSize", "Pclass.FamSize", "SibSp", "Parch"))
 
-omitted_col = c("PassengerId", "Ticket", "Name", "Cabin", "Survived", "FamSize", "SibSp", "Parch")
+omitted_col = c("PassengerId", "Ticket", "Name", "Cabin", "Survived") #"FamSize", "SibSp", "Parch")
 predictors = names(train.csv)[!names(train.csv) %in% omitted_col]
 
 #predictors = c("Title", "Pclass", "Alone", "Age", "Sex", "Embarked", "Title.Pclass", "Title.FamSize", "FamSize.Embarked", "Age.Pclass")
 # highlyCorrelated = findCorrelation(cor(train.csv[,predictors]), cutoff=0.75)
 # predictors[highlyCorrelated]
-# if (length(highlyCorrelated) > 1){
-#   predictors = predictors[-highlyCorrelated]
+#  if (length(highlyCorrelated) >= 1){
+#    predictors = predictors[-highlyCorrelated]
 # }
 
 train_trans = preProcess(train.csv[,predictors], method="scale")
@@ -365,8 +365,6 @@ svm.bestmod.pred1 = make_prediction(bestmod, test.csv)
 svm.class1 = ifelse(svm.bestmod.pred1 > 0.5, 1, 0) 
 svm_auc1 = plotROC(svm.bestmod.pred1, test.csv)
 
-
-
 bestmod2 = find_best_svm(train.csv[,temp])
 svm.bestmod.pred2 = make_prediction(bestmod2, test.csv)
 svm.class2 = ifelse(svm.bestmod.pred2 > 0.5, 1, 0)
@@ -374,16 +372,30 @@ svm_auc2 = plotROC(svm.bestmod.pred2, test.csv)
 #summary(bestmod2)
 
 
-num_comp = 11#find_best_num_components(train.csv.pca3, test.csv.pca3)
+num_comp = 9#find_best_num_components(train.csv.pca3, test.csv.pca3)
 bestmod_pca = find_best_svm(train.csv.pca3[,c(1:num_comp, ncol(train.csv.pca3))], "linear")
 svm.bestmod_pca.pred1 = make_prediction(bestmod_pca, test.csv.pca3)
 svm_pca.class1 = ifelse(svm.bestmod_pca.pred1 > 0.5, 1, 0)
 svm_pca_auc1 = plotROC(svm.bestmod_pca.pred1, test.csv.pca3)
 
 bestmod_pca2 = find_best_svm(train.csv.pca3[,c(1:num_comp, ncol(train.csv.pca3))])
-svm.bestmod_pca.pred2 = make_prediction(bestmod_pca2, test.csv.pca3)
+svm.bestmod_pca.pred2 = make_prediction(bestmod_pca2, train.csv.pca3)
 svm_pca.class2 = ifelse(svm.bestmod_pca.pred2 > 0.5, 1, 0)
 svm_pca_auc2 = plotROC(svm.bestmod_pca.pred2, test.csv.pca3)
+
+
+lda.fit=lda(Survived~.,data=train.csv[,temp])
+lda.pred=predict(lda.fit, test.csv)
+lda.class = lda.pred$class
+lda.class = as.numeric(as.character(unlist(lda.class)))
+table(predict=lda.class, truth=test.csv$Survived)
+lda_auc = plotROC(lda.pred$x, test.csv)
+
+glm.fit = glm(Survived~.,data=train.csv[,temp], family=binomial)
+glm.pred = predict(glm.fit, test.csv)
+glm.class = ifelse(glm.pred > 0.5, 1, 0)
+table(predict=glm.class, truth=test.csv$Survived)
+glm_auc = plotROC(glm.pred, test.csv)
 
 #svm.bestmod_pca1.pred = make_prediction(bestmod_pca1, test.csv.pca1)
 # Find best using transformed first two components
@@ -518,66 +530,25 @@ dropout_history <- dropout_model3 %>% fit(
   verbose = 2
 )
 
-dropout_model4 <- 
-  keras_model_sequential() %>%
-  layer_dense(units = 64, activation = "relu", input_shape = ncol(train.csv[,predictors]), kernel_constraint=constraint_maxnorm(3)) %>%
-  layer_dropout(0.4) %>%
-  layer_dense(units = 64, activation = "relu", kernel_constraint=constraint_maxnorm(3)) %>%
-  layer_dropout(0.2) %>%
-  layer_dense(units = 1, activation = "sigmoid")
-
-dropout_model4 %>% compile(
-  optimizer = "adam",
-  loss = "binary_crossentropy",
-  metrics = list("accuracy")
-)
-
-dropout_history <- dropout_model4 %>% fit(
-  data.matrix(train.csv[,predictors]),
-  data.matrix(train.csv$Survived),
-  epochs = 150,
-  batch_size = 32,
-  #validation_data = list(data.matrix(test.csv[,predictors]), data.matrix(test.csv$Survived)),
-  validation_split = 0,
-  verbose = 2
-)
-
-dropout_model5 <- 
-  keras_model_sequential() %>%
-  layer_dense(units = 16, activation = "relu", input_shape = ncol(train.csv[,predictors]), kernel_constraint=constraint_maxnorm(3)) %>%
-  #layer_dropout(0.4) %>%
-  layer_dense(units = 16, activation = "relu", kernel_constraint=constraint_maxnorm(3)) %>%
-  #layer_dropout(0.2) %>%
-  layer_dense(units = 1, activation = "sigmoid")
-
-dropout_model5 %>% compile(
-  optimizer = "adam",
-  loss = "binary_crossentropy",
-  metrics = list("accuracy")
-)
-
-dropout_history <- dropout_model5 %>% fit(
-  data.matrix(train.csv[,predictors]),
-  data.matrix(train.csv$Survived),
-  epochs = 50,
-  batch_size = 32,
-  #validation_data = list(data.matrix(test.csv[,predictors]), data.matrix(test.csv$Survived)),
-  validation_split = 0,
-  verbose = 2
-)
 
 dropout_model.pred = predict(dropout_model3, data.matrix(test.csv.pca3[,c(1:num_comp)]))
 predicted.class3 = ifelse(dropout_model.pred>0.5, 1, 0)
 table(predict=predicted.class3, truth=test.csv.pca3$Survived)
 nn_auc3 = plotROC(dropout_model.pred, test.csv.pca3)
 
-aucs = c(svm_auc1, svm_auc2, svm_pca_auc1, svm_pca_auc2, nn_auc1, nn_auc2, nn_auc3)
+
+
+
+
+aucs = c(svm_auc1, svm_auc2, svm_pca_auc1, svm_pca_auc2, nn_auc1, nn_auc2, nn_auc3, lda_auc, glm_auc)
 predictors
 for(auc in aucs){
   print(auc)
 }
 
-x = cbind(svm.class1, svm.class2, svm_pca.class1, svm_pca.class2, predicted.class1, predicted.class2, predicted.class3)
+
+
+x = cbind(svm.class1, svm.class2, svm_pca.class1, svm_pca.class2, predicted.class1, predicted.class2, predicted.class3, lda.class, glm.class)
 
 # over each row of data.frame (or matrix)
 ensemble.class = sapply(1:nrow(x), function(idx) {
@@ -708,17 +679,13 @@ predicted.class2 = ifelse(nn.pred2>0.5, 1, 0)
 nn.pred3 = predict(dropout_model3, data.matrix(test.csv.pca3.kaggle[,1:num_comp]))
 predicted.class3 = ifelse(nn.pred3>0.5, 1, 0)
 
-nn.pred4 = predict(dropout_model4, data.matrix(test.csv.kaggle[,predictors]))
-predicted.class4 = ifelse(nn.pred4>0.5, 1, 0)
+lda.pred = predict(lda.fit, test.csv.kaggle)
+lda.class = as.numeric(as.character(unlist(lda.pred$class)))
 
-nn.pred5 = predict(dropout_model5, data.matrix(test.csv.kaggle[,predictors]))
-predicted.class5 = ifelse(nn.pred5>0.5, 1, 0)
+glm.pred = predict(glm.fit, test.csv.kaggle)
+glm.class = ifelse(glm.pred>0.5, 1, 0)
 
-
-
-x = cbind(svm.class1, svm.class2, svm_pca.class1, svm_pca.class2, predicted.class1, predicted.class2, predicted.class3, predicted.class4, predicted.class5)
-
-#x = cbind(svm.class1, svm.class2, predicted.class1, predicted.class2, predicted.class3)
+x = cbind(predicted.class1, predicted.class2, predicted.class3) # lda.class, glm.class
 
 # over each row of data.frame (or matrix)
 ensemble.class = sapply(1:nrow(x), function(idx) {
@@ -730,7 +697,7 @@ ensemble.class = sapply(1:nrow(x), function(idx) {
   t <- as.numeric(names(t[t == t.max]))
 })
 
-ensemble.class == predicted.class5
+ensemble.class == predicted.class1
 
-submission = data.frame(PassengerId=test.csv.kaggle.passenger_id,Survived=predicted.class1)
+submission = data.frame(PassengerId=test.csv.kaggle.passenger_id,Survived=ensemble.class)
 write.csv(submission, "ensemble_submission.csv", row.names=FALSE)
